@@ -1,0 +1,32 @@
+services:
+  telegram-monitor:
+    build: .
+    container_name: telegram-monitor
+    restart: unless-stopped
+    command: python main.py --monitor
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - TZ=Asia/Shanghai
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # 每日早报（可选，用 cron 触发）
+  daily-report:
+    build: .
+    container_name: telegram-report
+    profiles: ["report"]
+    command: python main.py --report
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - TZ=Asia/Shanghai
