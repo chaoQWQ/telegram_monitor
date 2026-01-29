@@ -22,6 +22,9 @@ class Config:
     telegram_session: Optional[str] = None
     telegram_channels: List[int] = field(default_factory=list)
 
+    # 过滤模式: standard (关键词分级) / ai_only (仅排除，其余全部分析)
+    filter_mode: str = "standard"
+
     # 批量分析间隔（分钟）
     batch_interval: int = 60
 
@@ -89,6 +92,7 @@ class Config:
             telegram_phone=os.getenv('TELEGRAM_PHONE'),
             telegram_session=os.getenv('TELEGRAM_SESSION'),
             telegram_channels=channels,
+            filter_mode=os.getenv('FILTER_MODE', 'standard'),
             batch_interval=int(os.getenv('BATCH_INTERVAL', '60')),
             gemini_api_key=os.getenv('GEMINI_API_KEY'),
             gemini_model=os.getenv('GEMINI_MODEL', 'gemini-2.0-flash'),

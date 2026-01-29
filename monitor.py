@@ -19,6 +19,7 @@ from message_filter import MessageFilter, ImpactLevel
 from analyzer import NewsAnalyzer
 from storage import Storage
 from daily_report import DailyReport
+from trend_updater import TrendUpdater
 
 logger = logging.getLogger(__name__)
 
@@ -60,12 +61,14 @@ class Monitor:
         self._notifier = NotificationService()
         self._storage = Storage()
         self._daily_report = DailyReport()
+        self._trend_updater = TrendUpdater()
 
         self._queue: deque = deque(maxlen=200)
         self._stats = Stats()
         self._running = False
         self._batch_task: Optional[asyncio.Task] = None
         self._daily_report_task: Optional[asyncio.Task] = None
+        self._trend_task: Optional[asyncio.Task] = None
 
         logger.info(f"监听器初始化: 频道={len(self._channel_ids)}, 间隔={batch_interval}分钟")
 
@@ -100,6 +103,7 @@ class Monitor:
 
         self._batch_task = asyncio.create_task(self._batch_loop())
         self._daily_report_task = asyncio.create_task(self._daily_report_loop())
+        self._trend_task = asyncio.create_task(self._trend_loop())
         logger.info("开始监听...")
 
         try:
@@ -124,6 +128,13 @@ class Monitor:
             self._daily_report_task.cancel()
             try:
                 await self._daily_report_task
+            except asyncio.CancelledError:
+                pass
+
+        if self._trend_task:
+            self._trend_task.cancel()
+            try:
+                await self._trend_task
             except asyncio.CancelledError:
                 pass
 
@@ -205,6 +216,43 @@ class Monitor:
             except Exception as e:
                 logger.error(f"每日早报任务错误: {e}")
                 # 出错后等待 1 小时再重试
+                await asyncio.sleep(3600)
+
+    async def _trend_loop(self):
+        """动态热词更新任务，每天 6:00 更新"""
+        UPDATE_HOUR = 6
+        UPDATE_MINUTE = 0
+
+        # 启动时先尝试更新一次（如果不阻塞太久的话，或者放后台）
+        # 这里选择先运行一次，确保启动时是最新的
+        logger.info("启动热词更新...")
+        await asyncio.to_thread(self._trend_updater.update)
+        self._filter.reload()
+
+        while self._running:
+            try:
+                now = datetime.now(timezone(timedelta(hours=8)))
+                target = now.replace(hour=UPDATE_HOUR, minute=UPDATE_MINUTE, second=0, microsecond=0)
+                if now >= target:
+                    target += timedelta(days=1)
+
+                wait_seconds = (target - now).total_seconds()
+                logger.info(f"下次热词更新将在 {target.strftime('%Y-%m-%d %H:%M')}，等待 {wait_seconds/3600:.1f} 小时")
+
+                await asyncio.sleep(wait_seconds)
+
+                logger.info("===== 开始更新动态热词 =====")
+                success = await asyncio.to_thread(self._trend_updater.update)
+                if success:
+                    self._filter.reload()
+                    logger.info("动态热词更新成功并已重载")
+                else:
+                    logger.warning("动态热词更新失败")
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"热词更新任务错误: {e}")
                 await asyncio.sleep(3600)
 
     async def _process_batch(self):

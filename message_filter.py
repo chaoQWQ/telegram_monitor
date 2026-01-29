@@ -4,10 +4,14 @@
 """
 
 import re
+import json
 import logging
+from pathlib import Path
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Dict, Any
+
+from config import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -32,44 +36,67 @@ class FilterResult:
 class MessageFilter:
     """消息过滤器"""
 
-    # 高影响关键词
-    HIGH_IMPACT_KEYWORDS = {
-        "货币政策": ["央行", "降准", "降息", "加息", "LPR", "MLF", "逆回购", "货币政策"],
-        "地缘政治": ["制裁", "关税", "贸易战", "出口管制", "实体清单", "战争", "冲突"],
-        "重大事件": ["熔断", "崩盘", "暴跌", "暴涨", "黑天鹅", "救市", "国家队"],
-        "关键人物": ["特朗普", "Trump", "拜登", "马斯克", "Musk", "鲍威尔", "Powell"],
-    }
-
-    # 中等影响关键词
-    MEDIUM_IMPACT_KEYWORDS = {
-        "宏观数据": ["GDP", "CPI", "PPI", "PMI", "失业率", "通胀"],
-        "国际市场": ["美股", "纳斯达克", "道琼斯", "港股", "恒生", "A50"],
-        "大宗商品": ["原油", "黄金", "白银", "铜", "铁矿石", "天然气"],
-        "行业政策": ["新能源", "光伏", "芯片", "半导体", "AI", "人工智能", "医药"],
-    }
-
-    # 排除关键词
-    EXCLUDE_KEYWORDS = [
-        "广告", "推广", "代理", "招商", "VIP", "会员",
-        "加群", "私聊", "微信", "QQ群",
-        "稳赚", "包赚", "无风险", "内幕", "荐股",
-    ]
-
     URL_PATTERN = re.compile(r'https?://\S+')
 
-    def __init__(self, min_length: int = 10, max_url_count: int = 3):
+    def __init__(self, data_dir: str = "./data", min_length: int = 10, max_url_count: int = 3):
+        self._config = get_config()
+        self._filter_mode = self._config.filter_mode
+        self._data_dir = Path(data_dir)
         self._min_length = min_length
         self._max_url_count = max_url_count
 
-        self._all_high: Set[str] = set()
-        for keywords in self.HIGH_IMPACT_KEYWORDS.values():
-            self._all_high.update(keywords)
+        # 关键词映射: keyword -> category
+        self._high_keywords: Dict[str, str] = {}
+        self._medium_keywords: Dict[str, str] = {}
+        self._exclude_keywords: Set[str] = set()
 
-        self._all_medium: Set[str] = set()
-        for keywords in self.MEDIUM_IMPACT_KEYWORDS.values():
-            self._all_medium.update(keywords)
+        self.reload()
+        logger.info(f"过滤器模式: {self._filter_mode}")
 
-        logger.info(f"过滤器初始化: 高影响 {len(self._all_high)}个, 中等 {len(self._all_medium)}个")
+    def reload(self):
+        """重新加载关键词库"""
+        self._high_keywords.clear()
+        self._medium_keywords.clear()
+        self._exclude_keywords.clear()
+
+        # 1. 加载静态基准库
+        self._load_file("base_keywords.json")
+
+        # 2. 加载动态热词库
+        self._load_file("dynamic_keywords.json")
+
+        logger.info(f"过滤器加载完成: 高影响词 {len(self._high_keywords)}个, 中等词 {len(self._medium_keywords)}个, 排除词 {len(self._exclude_keywords)}个")
+
+    def _load_file(self, filename: str):
+        """加载单个 JSON 配置文件"""
+        path = self._data_dir / filename
+        if not path.exists():
+            logger.warning(f"配置文件不存在: {path}")
+            return
+
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            # 加载 HIGH
+            for category, keywords in data.get("HIGH", {}).items():
+                for kw in keywords:
+                    if kw:
+                        self._high_keywords[kw] = category
+
+            # 加载 MEDIUM
+            for category, keywords in data.get("MEDIUM", {}).items():
+                for kw in keywords:
+                    if kw:
+                        self._medium_keywords[kw] = category
+
+            # 加载 EXCLUDED
+            for kw in data.get("EXCLUDED", []):
+                if kw:
+                    self._exclude_keywords.add(kw)
+
+        except Exception as e:
+            logger.error(f"加载配置文件 {filename} 失败: {e}")
 
     def filter_message(self, text: str) -> FilterResult:
         """过滤消息"""
@@ -80,32 +107,35 @@ class MessageFilter:
         if len(urls) > self._max_url_count:
             return FilterResult(ImpactLevel.EXCLUDED, reason="URL过多")
 
-        for keyword in self.EXCLUDE_KEYWORDS:
+        # 检查排除词
+        for keyword in self._exclude_keywords:
             if keyword in text:
                 return FilterResult(ImpactLevel.EXCLUDED, matched_keywords=[keyword], reason=f"排除: {keyword}")
 
-        # 高影响
+        # AI 纯净模式: 仅排除广告，其余全量分析
+        if self._filter_mode == 'ai_only':
+            return FilterResult(ImpactLevel.LOW, reason="AI Only: 全量分析")
+
+        # 检查高影响
         high_matches = []
         high_category = ""
-        for category, keywords in self.HIGH_IMPACT_KEYWORDS.items():
-            for kw in keywords:
-                if kw in text:
-                    high_matches.append(kw)
-                    if not high_category:
-                        high_category = category
+        for keyword, category in self._high_keywords.items():
+            if keyword in text:
+                high_matches.append(keyword)
+                if not high_category:
+                    high_category = category
 
         if high_matches:
             return FilterResult(ImpactLevel.HIGH, high_matches, high_category, f"高影响: {high_matches[:3]}")
 
-        # 中等影响
+        # 检查中等影响
         medium_matches = []
         medium_category = ""
-        for category, keywords in self.MEDIUM_IMPACT_KEYWORDS.items():
-            for kw in keywords:
-                if kw in text:
-                    medium_matches.append(kw)
-                    if not medium_category:
-                        medium_category = category
+        for keyword, category in self._medium_keywords.items():
+            if keyword in text:
+                medium_matches.append(keyword)
+                if not medium_category:
+                    medium_category = category
 
         if medium_matches:
             return FilterResult(ImpactLevel.MEDIUM, medium_matches, medium_category, f"中等: {medium_matches[:3]}")
