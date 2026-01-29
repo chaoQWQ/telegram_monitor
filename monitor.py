@@ -18,6 +18,7 @@ from client import TelegramClientWrapper
 from message_filter import MessageFilter, ImpactLevel
 from analyzer import NewsAnalyzer
 from storage import Storage
+from daily_report import DailyReport
 
 logger = logging.getLogger(__name__)
 
@@ -58,11 +59,13 @@ class Monitor:
         self._analyzer = NewsAnalyzer()
         self._notifier = NotificationService()
         self._storage = Storage()
+        self._daily_report = DailyReport()
 
         self._queue: deque = deque(maxlen=200)
         self._stats = Stats()
         self._running = False
         self._batch_task: Optional[asyncio.Task] = None
+        self._daily_report_task: Optional[asyncio.Task] = None
 
         logger.info(f"监听器初始化: 频道={len(self._channel_ids)}, 间隔={batch_interval}分钟")
 
@@ -96,6 +99,7 @@ class Monitor:
             return
 
         self._batch_task = asyncio.create_task(self._batch_loop())
+        self._daily_report_task = asyncio.create_task(self._daily_report_loop())
         logger.info("开始监听...")
 
         try:
@@ -113,6 +117,13 @@ class Monitor:
             self._batch_task.cancel()
             try:
                 await self._batch_task
+            except asyncio.CancelledError:
+                pass
+
+        if self._daily_report_task:
+            self._daily_report_task.cancel()
+            try:
+                await self._daily_report_task
             except asyncio.CancelledError:
                 pass
 
@@ -161,6 +172,40 @@ class Monitor:
                 break
             except Exception as e:
                 logger.error(f"批量处理错误: {e}")
+
+    async def _daily_report_loop(self):
+        """每日早报定时任务，每天 8:30 发送"""
+        REPORT_HOUR = 8
+        REPORT_MINUTE = 30
+
+        while self._running:
+            try:
+                now = datetime.now(timezone(timedelta(hours=8)))
+                # 计算下次 8:30 的时间
+                target = now.replace(hour=REPORT_HOUR, minute=REPORT_MINUTE, second=0, microsecond=0)
+                if now >= target:
+                    # 已过今天 8:30，等明天
+                    target += timedelta(days=1)
+
+                wait_seconds = (target - now).total_seconds()
+                logger.info(f"每日早报将在 {target.strftime('%Y-%m-%d %H:%M')} 发送，等待 {wait_seconds/3600:.1f} 小时")
+
+                await asyncio.sleep(wait_seconds)
+
+                # 发送早报
+                logger.info("===== 开始生成每日早报 =====")
+                success = await asyncio.to_thread(self._daily_report.run)
+                if success:
+                    logger.info("每日早报发送成功")
+                else:
+                    logger.warning("每日早报未生成或发送失败")
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"每日早报任务错误: {e}")
+                # 出错后等待 1 小时再重试
+                await asyncio.sleep(3600)
 
     async def _process_batch(self):
         messages = list(self._queue)
