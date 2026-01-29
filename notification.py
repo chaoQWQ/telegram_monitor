@@ -80,47 +80,91 @@ class NotificationService:
 
         return success
 
-    def _send_email(self, content: str) -> bool:
-        """发送邮件"""
-        bj_time = datetime.now(timezone(timedelta(hours=8)))
-        subject = f"时政经济情报 {bj_time.strftime('%Y-%m-%d %H:%M')}"
-
-        # Markdown 转 HTML，替换利好/利空为带颜色的标签
-        html_content = markdown.markdown(content, extensions=['tables', 'fenced_code'])
-        # 利好用红色（A股红涨），利空用绿色（A股绿跌）
-        html_content = html_content.replace('🟢', '<span class="bullish">🟢 利好</span>')
-        html_content = html_content.replace('🔴', '<span class="bearish">🔴 利空</span>')
-        html_content = html_content.replace('⚪', '<span class="neutral">⚪ 中性</span>')
-
-        html_body = f"""
-        <html>
-        <head>
-            <style>
-                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                       line-height: 1.6; padding: 20px; max-width: 800px; margin: 0 auto; }}
-                h2, h3 {{ color: #333; }}
-                table {{ border-collapse: collapse; width: 100%; margin: 10px 0; }}
-                th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
-                th {{ background-color: #f5f5f5; }}
-                hr {{ border: none; border-top: 1px solid #eee; margin: 20px 0; }}
-                code {{ background: #f5f5f5; padding: 2px 5px; border-radius: 3px; }}
-                .bullish {{ color: #e53935; font-weight: bold; }}
-                .bearish {{ color: #43a047; font-weight: bold; }}
-                .neutral {{ color: #757575; }}
-            </style>
-        </head>
-        <body>{html_content}</body>
-        </html>
+    def _send_email(self, content: str, title: str = "时政经济情报") -> bool:
         """
+        通过邮件推送消息
 
-        msg = MIMEText(html_body, 'html', 'utf-8')
-        msg['From'] = formataddr(("时政经济助手", self._email_sender))
-        msg['To'] = formataddr(("投资者", self._email_receiver))
-        msg['Subject'] = Header(subject, 'utf-8')
-        server = smtplib.SMTP_SSL(self._smtp_server, self._smtp_port)
-        server.login(self._email_sender, self._email_password)
-        server.sendmail(self._email_sender, [self._email_receiver], msg.as_string())
-        server.quit()
+        Args:
+            content: Markdown 内容 (将被转换为 HTML 发送)
+            title: 邮件标题
 
-        logger.info(f"邮件发送成功: {self._email_receiver}")
-        return True
+        Returns:
+            是否发送成功
+        """
+        if not (self._email_sender and self._email_password and self._email_receiver):
+            return False
+
+        # 提取标题
+        lines = content.strip().split('\n')
+        if lines and lines[0].startswith('#'):
+            title = lines[0].lstrip('#').strip()
+
+        try:
+            # Markdown 转 HTML
+            html_body = markdown.markdown(
+                content,
+                extensions=['tables', 'fenced_code', 'nl2br']
+            )
+
+            # 邮件 CSS 样式 (适配 QQ 邮箱等主流客户端)
+            css_style = """
+            <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; line-height: 1.6; color: #333; }
+                h1, h2, h3 { color: #2c3e50; margin-top: 24px; margin-bottom: 16px; border-bottom: 1px solid #eaecef; padding-bottom: .3em; }
+                h1 { font-size: 24px; }
+                h2 { font-size: 20px; }
+                h3 { font-size: 18px; }
+                p { margin-bottom: 16px; }
+                table { border-collapse: collapse; width: 100%; margin-bottom: 16px; display: block; overflow-x: auto; }
+                th, td { border: 1px solid #dfe2e5; padding: 6px 13px; }
+                th { background-color: #f6f8fa; font-weight: 600; }
+                tr:nth-child(2n) { background-color: #f6f8fa; }
+                blockquote { border-left: 4px solid #dfe2e5; color: #6a737d; padding: 0 1em; margin: 0; background-color: #f9f9f9; }
+                code { background-color: #f6f8fa; padding: 0.2em 0.4em; border-radius: 3px; font-family: monospace; font-size: 85%; }
+                pre { background-color: #f6f8fa; padding: 16px; overflow: auto; border-radius: 3px; }
+                ul, ol { padding-left: 2em; }
+                hr { height: 0.25em; padding: 0; margin: 24px 0; background-color: #e1e4e8; border: 0; }
+                .footer { margin-top: 40px; font-size: 12px; color: #999; text-align: center; border-top: 1px solid #eee; padding-top: 10px; }
+            </style>
+            """
+
+            # 组合完整 HTML
+            full_html = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                {css_style}
+            </head>
+            <body>
+                {html_body}
+                <div class="footer">
+                    <p>本邮件由 Telegram 时政经济监控系统 自动生成</p>
+                </div>
+            </body>
+            </html>
+            """
+
+            # 构造邮件
+            message = MIMEText(full_html, 'html', 'utf-8')
+            message['From'] = formataddr(("时政经济监控助手", self._email_sender))
+            message['To'] = formataddr(("投资者", self._email_receiver))
+            message['Subject'] = Header(title, 'utf-8')
+
+            # 连接 SMTP 服务器
+            if self._smtp_port == 465:
+                server = smtplib.SMTP_SSL(self._smtp_server, self._smtp_port)
+            else:
+                server = smtplib.SMTP(self._smtp_server, self._smtp_port)
+                server.starttls()
+
+            server.login(self._email_sender, self._email_password)
+            server.sendmail(self._email_sender, [self._email_receiver], message.as_string())
+            server.quit()
+
+            logger.info(f"邮件发送成功: {self._email_receiver}")
+            return True
+
+        except Exception as e:
+            logger.error(f"发送邮件失败: {e}")
+            return False
