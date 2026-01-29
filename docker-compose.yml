@@ -1,7 +1,7 @@
 services:
   telegram-monitor:
     build: .
-    container_name: telegram-monitor
+    container_name: telegram-monitor-new
     restart: unless-stopped
     command: python main.py --monitor
     env_file:
