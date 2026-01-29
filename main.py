@@ -57,7 +57,7 @@ def parse_args():
 
     parser.add_argument('--monitor', action='store_true', help='启动实时监听')
     parser.add_argument('--report', action='store_true', help='生成每日早报')
-    parser.add_argument('--interval', type=int, default=5, help='批量分析间隔（分钟）')
+    parser.add_argument('--interval', type=int, default=None, help='批量分析间隔（分钟），默认从 .env 读取')
     parser.add_argument('--debug', action='store_true', help='调试模式')
     parser.add_argument('--generate-session', action='store_true', help='生成 Telegram Session')
 
@@ -155,13 +155,15 @@ def main():
         return 0
 
     if args.monitor:
-        logger.info(f"模式: 实时监听 (间隔={args.interval}分钟)")
-        run_monitor(args.interval, args.debug)
+        interval = args.interval if args.interval is not None else config.batch_interval
+        logger.info(f"模式: 实时监听 (间隔={interval}分钟)")
+        run_monitor(interval, args.debug)
         return 0
 
     # 默认启动监听
-    logger.info("默认模式: 实时监听")
-    run_monitor(args.interval, args.debug)
+    interval = args.interval if args.interval is not None else config.batch_interval
+    logger.info(f"默认模式: 实时监听 (间隔={interval}分钟)")
+    run_monitor(interval, args.debug)
     return 0
 
 

@@ -23,7 +23,7 @@ class Config:
     telegram_channels: List[int] = field(default_factory=list)
 
     # 批量分析间隔（分钟）
-    batch_interval: int = 5
+    batch_interval: int = 60
 
     # Gemini AI 配置
     gemini_api_key: Optional[str] = None
@@ -89,7 +89,7 @@ class Config:
             telegram_phone=os.getenv('TELEGRAM_PHONE'),
             telegram_session=os.getenv('TELEGRAM_SESSION'),
             telegram_channels=channels,
-            batch_interval=int(os.getenv('BATCH_INTERVAL', '5')),
+            batch_interval=int(os.getenv('BATCH_INTERVAL', '60')),
             gemini_api_key=os.getenv('GEMINI_API_KEY'),
             gemini_model=os.getenv('GEMINI_MODEL', 'gemini-2.0-flash'),
             gemini_request_delay=float(os.getenv('GEMINI_REQUEST_DELAY', '2.0')),
