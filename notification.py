@@ -149,7 +149,7 @@ class NotificationService:
             message = MIMEText(full_html, 'html', 'utf-8')
 
             # 显式使用 Header 编码中文昵称，避免客户端无法识别
-            message['From'] = formataddr(("时政经济监控助手", self._email_sender))
+            message['From'] = formataddr(("大A智能分析助手", self._email_sender))
             message['To'] = formataddr(("投资者", self._email_receiver))
             message['Subject'] = Header(title, 'utf-8')
 
