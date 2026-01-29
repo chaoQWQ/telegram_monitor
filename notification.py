@@ -85,8 +85,13 @@ class NotificationService:
         bj_time = datetime.now(timezone(timedelta(hours=8)))
         subject = f"时政经济情报 {bj_time.strftime('%Y-%m-%d %H:%M')}"
 
-        # Markdown 转 HTML
+        # Markdown 转 HTML，替换利好/利空为带颜色的标签
         html_content = markdown.markdown(content, extensions=['tables', 'fenced_code'])
+        # 利好用红色（A股红涨），利空用绿色（A股绿跌）
+        html_content = html_content.replace('🟢', '<span class="bullish">🟢 利好</span>')
+        html_content = html_content.replace('🔴', '<span class="bearish">🔴 利空</span>')
+        html_content = html_content.replace('⚪', '<span class="neutral">⚪ 中性</span>')
+
         html_body = f"""
         <html>
         <head>
@@ -99,6 +104,9 @@ class NotificationService:
                 th {{ background-color: #f5f5f5; }}
                 hr {{ border: none; border-top: 1px solid #eee; margin: 20px 0; }}
                 code {{ background: #f5f5f5; padding: 2px 5px; border-radius: 3px; }}
+                .bullish {{ color: #e53935; font-weight: bold; }}
+                .bearish {{ color: #43a047; font-weight: bold; }}
+                .neutral {{ color: #757575; }}
             </style>
         </head>
         <body>{html_content}</body>
@@ -106,10 +114,9 @@ class NotificationService:
         """
 
         msg = MIMEText(html_body, 'html', 'utf-8')
+        msg['From'] = formataddr(("时政经济助手", self._email_sender))
+        msg['To'] = formataddr(("投资者", self._email_receiver))
         msg['Subject'] = Header(subject, 'utf-8')
-        msg['From'] = formataddr(('时政监控', self._email_sender))
-        msg['To'] = self._email_receiver
-
         server = smtplib.SMTP_SSL(self._smtp_server, self._smtp_port)
         server.login(self._email_sender, self._email_password)
         server.sendmail(self._email_sender, [self._email_receiver], msg.as_string())
