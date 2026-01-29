@@ -63,35 +63,47 @@ class NewsAnalyzer:
     def is_available(self) -> bool:
         return self._client is not None
 
-    def analyze_batch(self, batch_text: str, message_count: int) -> BatchAnalysisResult:
-        """批量分析消息"""
+    def analyze_batch(self, batch_text: str, message_count: int, max_retries: int = 3) -> BatchAnalysisResult:
+        """批量分析消息（带 429 重试）"""
         if not self.is_available():
             return BatchAnalysisResult(success=False, error_message="AI 未配置")
 
-        try:
-            prompt = self._build_batch_prompt(batch_text, message_count)
+        prompt = self._build_batch_prompt(batch_text, message_count)
+        config = get_config()
 
-            config = get_config()
-            if config.gemini_request_delay > 0:
-                time.sleep(config.gemini_request_delay)
+        for attempt in range(max_retries):
+            try:
+                if config.gemini_request_delay > 0:
+                    time.sleep(config.gemini_request_delay)
 
-            response = self._client.models.generate_content(
-                model=self._model_name,
-                contents=prompt,
-                config={
-                    "temperature": 0.3,
-                    "max_output_tokens": 4096,
-                }
-            )
+                response = self._client.models.generate_content(
+                    model=self._model_name,
+                    contents=prompt,
+                    config={
+                        "temperature": 0.3,
+                        "max_output_tokens": 4096,
+                    }
+                )
 
-            if response and response.text:
-                return self._parse_response(response.text, message_count)
-            else:
-                return BatchAnalysisResult(success=False, error_message="空响应")
+                if response and response.text:
+                    return self._parse_response(response.text, message_count)
+                else:
+                    return BatchAnalysisResult(success=False, error_message="空响应")
 
-        except Exception as e:
-            logger.error(f"批量分析失败: {e}")
-            return BatchAnalysisResult(success=False, error_message=str(e))
+            except Exception as e:
+                error_str = str(e)
+                # 429 限流错误，等待后重试
+                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                    wait_time = 10 * (attempt + 1)  # 10s, 20s, 30s 递增等待
+                    logger.warning(f"API 限流，等待 {wait_time}s 后重试 ({attempt + 1}/{max_retries})")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    logger.error(f"批量分析失败: {e}")
+                    return BatchAnalysisResult(success=False, error_message=error_str)
+
+        logger.error(f"批量分析失败: 重试 {max_retries} 次后仍限流")
+        return BatchAnalysisResult(success=False, error_message="API 限流，请稍后重试")
 
     def _build_batch_prompt(self, batch_text: str, message_count: int) -> str:
         from datetime import datetime, timezone, timedelta
