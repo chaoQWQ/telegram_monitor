@@ -34,9 +34,9 @@ class TrendUpdater:
     }}
     """
 
-    def __init__(self, data_dir: str = "./data"):
-        self._data_dir = Path(data_dir)
-        self._output_file = self._data_dir / "dynamic_keywords.json"
+    def __init__(self, config_dir: str = "./config"):
+        self._config_dir = Path(config_dir)
+        self._output_file = self._config_dir / "dynamic_keywords.json"
         self._config = get_config()
 
     def update(self) -> bool:
@@ -83,7 +83,7 @@ class TrendUpdater:
 
     def _save(self, data: Dict[str, Any]):
         """保存到文件"""
-        self._data_dir.mkdir(parents=True, exist_ok=True)
+        self._config_dir.mkdir(parents=True, exist_ok=True)
         with open(self._output_file, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
 

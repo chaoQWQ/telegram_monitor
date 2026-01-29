@@ -38,10 +38,10 @@ class MessageFilter:
 
     URL_PATTERN = re.compile(r'https?://\S+')
 
-    def __init__(self, data_dir: str = "./data", min_length: int = 10, max_url_count: int = 3):
+    def __init__(self, config_dir: str = "./config", min_length: int = 10, max_url_count: int = 3):
         self._config = get_config()
         self._filter_mode = self._config.filter_mode
-        self._data_dir = Path(data_dir)
+        self._config_dir = Path(config_dir)
         self._min_length = min_length
         self._max_url_count = max_url_count
 
@@ -69,7 +69,7 @@ class MessageFilter:
 
     def _load_file(self, filename: str):
         """加载单个 JSON 配置文件"""
-        path = self._data_dir / filename
+        path = self._config_dir / filename
         if not path.exists():
             logger.warning(f"配置文件不存在: {path}")
             return
