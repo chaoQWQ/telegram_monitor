@@ -259,7 +259,7 @@ class Monitor:
         ]
 
         for item in items:
-            emoji = {'利好': '🟢', '利空': '🔴'}.get(item.get('impact_direction', ''), '⚪')
+            emoji = {'利好': '🔴', '利空': '🟢'}.get(item.get('impact_direction', ''), '⚪')
             mag = item.get('impact_magnitude', 0)
             summary = item.get('summary', '')
             sectors = item.get('affected_sectors', [])
