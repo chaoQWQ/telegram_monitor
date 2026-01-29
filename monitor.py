@@ -294,6 +294,9 @@ class Monitor:
         return '\n\n'.join(lines)
 
     def _format_notification(self, items: List[Dict], total: int) -> str:
+        # 按影响程度从大到小排序
+        items = sorted(items, key=lambda x: x.get('impact_magnitude', 0), reverse=True)
+
         bj_time = datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M')
 
         lines = [

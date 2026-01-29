@@ -147,8 +147,10 @@ class NotificationService:
 
             # 构造邮件
             message = MIMEText(full_html, 'html', 'utf-8')
-            message['From'] = formataddr(("时政经济监控助手", self._email_sender))
-            message['To'] = formataddr(("投资者", self._email_receiver))
+
+            # 显式使用 Header 编码中文昵称，避免客户端无法识别
+            message['From'] = formataddr((Header("时政经济监控助手", 'utf-8').encode(), self._email_sender))
+            message['To'] = formataddr((Header("投资者", 'utf-8').encode(), self._email_receiver))
             message['Subject'] = Header(title, 'utf-8')
 
             # 连接 SMTP 服务器
