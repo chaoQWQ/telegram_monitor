@@ -313,10 +313,10 @@ class Monitor:
             sectors = item.get('affected_sectors', [])
 
             lines.append(f"### {emoji} {summary}")
-            lines.append(f"- **影响**: {'█' * mag}{'░' * (10-mag)} {mag}/10")
-
+            lines.append(f"- **影响程度**: {'█' * mag}{'░' * (10-mag)} {mag}/10")
+            lines.append(f"- **影响方向**: {item.get('impact_direction', '中性')}")
             if sectors:
-                lines.append(f"- **板块**: {', '.join(sectors[:5])}")
+                lines.append(f"- **相关板块**: {', '.join(sectors[:5])}")
 
             if item.get('action_suggestion'):
                 lines.append(f"- **建议**: {item['action_suggestion']}")
